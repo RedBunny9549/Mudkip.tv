@@ -1,28 +1,43 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import axios from 'axios';
-import { ArrowLeft, Info, PlayCircle } from 'lucide-react';
+import { ArrowLeft, Info, AlertCircle, Loader2 } from 'lucide-react';
 
 function Player() {
-  const { id } = useParams(); // This gets the anime ID from the URL
-  const [videoUrl, setVideoUrl] = useState('');
+  const { id } = useParams(); 
+  const [videoUrl, setVideoUrl] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [title, setTitle] = useState('');
 
   useEffect(() => {
     const getStream = async () => {
       try {
         setLoading(true);
-        // We fetch the info first to get the first episode ID
+        setError(null);
+
+        // 1. Get Anime Info
         const infoRes = await axios.get(`https://api-consumet-org-five.vercel.app/meta/anilist/info/${id}`);
+        setTitle(infoRes.data.title.english || infoRes.data.title.romaji);
+        
+        if (!infoRes.data.episodes || infoRes.data.episodes.length === 0) {
+            throw new Error("No episodes found for this title.");
+        }
+
         const firstEpId = infoRes.data.episodes[0].id;
         
-        // Then we get the actual video link for that episode
+        // 2. Get Video Link
         const watchRes = await axios.get(`https://api-consumet-org-five.vercel.app/anime/gogoanime/watch/${firstEpId}`);
         
-        // We use the 'Referer' or the first M3U8 source
-        setVideoUrl(watchRes.data.headers.Referer || watchRes.data.sources[0].url);
+        // Use the best available source
+        const stream = watchRes.data.headers?.Referer || watchRes.data.sources[0]?.url;
+        
+        if (!stream) throw new Error("Could not find a working stream.");
+        
+        setVideoUrl(stream);
       } catch (err) {
         console.error("Stream Error:", err);
+        setError(err.response?.status === 504 ? "The server is overloaded (504). Try refreshing in a few seconds!" : err.message);
       } finally {
         setLoading(false);
       }
@@ -39,7 +54,8 @@ function Player() {
           <ArrowLeft size={24} />
         </Link>
         <h1 className="text-lg font-bold truncate uppercase tracking-tighter">
-          Now Playing: <span className="text-accent">{id.replace(/-/g, ' ')}</span>
+          {loading ? "Loading..." : `Watching: `}
+          <span className="text-accent">{title || id}</span>
         </h1>
       </nav>
 
@@ -48,8 +64,20 @@ function Player() {
         <div className="relative aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl border border-gray-800">
           {loading ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900">
-              <div className="w-12 h-12 border-4 border-accent border-t-transparent rounded-full animate-spin mb-4"></div>
+              <Loader2 className="w-12 h-12 text-accent animate-spin mb-4" />
               <p className="text-gray-500 animate-pulse">Summoning the stream...</p>
+            </div>
+          ) : error ? (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 p-6 text-center">
+              <AlertCircle className="w-16 h-16 text-red-500 mb-4" />
+              <h3 className="text-xl font-bold">Oops! Something went wrong</h3>
+              <p className="text-gray-400 mt-2 max-w-md">{error}</p>
+              <button 
+                onClick={() => window.location.reload()}
+                className="mt-6 bg-accent px-6 py-2 rounded-full font-bold hover:scale-105 transition"
+              >
+                Try Again
+              </button>
             </div>
           ) : (
             <iframe 
@@ -63,23 +91,16 @@ function Player() {
         </div>
 
         {/* Info Area */}
-        <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="md:col-span-2 bg-gray-900/50 p-6 rounded-2xl border border-gray-800">
+        <div className="mt-8 bg-gray-900/50 p-6 rounded-2xl border border-gray-800">
             <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
               <Info className="text-accent" /> About this Title
             </h2>
             <p className="text-gray-400 leading-relaxed">
-              You are currently watching the first episode of {id}. We are working on adding an episode selector and a "Save to Watchlist" button using Supabase next!
+              ID: {id} <br />
+              You're watching the first episode. We'll be setting up the 
+              <strong> Supabase Database</strong> next so you can save your progress and 
+              actually have a "Continue Watching" list!
             </p>
-          </div>
-
-          <div className="bg-gray-900/50 p-6 rounded-2xl border border-gray-800 text-center">
-            <PlayCircle size={40} className="mx-auto text-accent mb-2" />
-            <h3 className="font-bold">Next Episode</h3>
-            <button className="mt-4 w-full bg-accent py-2 rounded-lg font-bold hover:bg-blue-600 transition opacity-50 cursor-not-allowed">
-              Coming Soon
-            </button>
-          </div>
         </div>
       </main>
     </div>
