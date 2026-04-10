@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Search, Play, BookOpen, User, Loader2, LogOut, ShieldCheck, X, Users, Star, BookMarked, History, TrendingUp } from 'lucide-react';
+import { Search, Play, BookOpen, User, Loader as Loader2, LogOut, ShieldCheck, X, Users, Star, BookMarked, History, TrendingUp } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { supabase } from './supabaseClient';
 import Auth from './Auth';
@@ -142,7 +142,7 @@ function App() {
                 <h2 className="text-4xl font-black mb-12 flex items-center gap-4 italic uppercase tracking-tighter">
                   <div className="w-2 h-10 bg-blue-600 rounded-full" /> Search Results
                 </h2>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6 gap-10">
+                <div className="grid grid-cols-6 gap-10">
                   {results.map((item) => (
                     <Link to={`/watch/${item.id}`} key={item.id} className="group block relative">
                       <div className="relative overflow-hidden rounded-[2.5rem] aspect-[3/4.5] border border-white/5 transition-all duration-500 group-hover:border-blue-500/50 shadow-2xl group-hover:-translate-y-3" style={{ backgroundColor: colors.bgCard }}>
@@ -175,7 +175,7 @@ function App() {
                         </div>
                       </div>
                    </div>
-                   <div className="hidden xl:flex gap-10">
+                   <div className="flex gap-10">
                       <div className="text-center">
                         <p className="text-3xl font-black text-white">{recent.length}</p>
                         <p className="text-[10px] font-black text-gray-600 uppercase tracking-widest mt-1">Watched</p>
@@ -188,7 +188,7 @@ function App() {
                 </div>
 
                 {/* Account Titles - The 3 Main Sections */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
+                <div className="grid grid-cols-3 gap-12">
                    {/* 1. Recent Activity */}
                    <div className="bg-white/[0.02] border border-white/5 p-8 rounded-[2.5rem]">
                       <h3 className="text-xl font-black mb-8 flex items-center gap-3 uppercase italic text-blue-500"><History /> Recent Watch</h3>
