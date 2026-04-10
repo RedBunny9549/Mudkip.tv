@@ -1,165 +1,157 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+import { useParams, Link } from 'react-router-dom';
 import axios from 'axios';
-import { Search, Play, BookOpen, User, LogOut, Loader2, Sparkles } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import { supabase } from './supabaseClient';
-import Auth from './Auth';
+import { ArrowLeft, Play, Loader2, AlertCircle, ChevronRight, RefreshCw, HardDrive } from 'lucide-react';
 
 const colors = {
   bgDeep: '#060d17',
   accent: '#3a86ff'
 };
 
-const MUDKIP_LOGO = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/258.png";
+// Use the META endpoint - it translates Anilist IDs (like 223) to video links
+const BASE_URL = "https://consumet-api-one.vercel.app/meta/anilist";
 
-// NEW STABLE PROXY - api.consumet.org is dead, use this instead:
-const STABLE_API = "https://consumet-api-one.vercel.app/meta/anilist";
+function Player() {
+  const { id } = useParams();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [animeData, setAnimeData] = useState(null);
+  const [episodes, setEpisodes] = useState([]);
+  const [currentEp, setCurrentEp] = useState(null);
+  const [videoUrl, setVideoUrl] = useState('');
 
-function App() {
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [mode, setMode] = useState('anime'); 
-  const [session, setSession] = useState(null);
-  const [showAuth, setShowAuth] = useState(false);
-  const [lastWatched, setLastWatched] = useState(null);
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (session) fetchLastWatched(session.user.id);
-    });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (session) fetchLastWatched(session.user.id);
-    });
-    return () => subscription.unsubscribe();
-  }, []);
-
-  const fetchLastWatched = async (userId) => {
+  const fetchInfo = async () => {
     try {
-      const { data } = await supabase
-        .from('watch_history')
-        .select('*')
-        .eq('user_id', userId)
-        .order('updated_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (data) setLastWatched(data);
-    } catch (e) { console.error(e); }
+      setLoading(true);
+      setError(null);
+      
+      // Step 1: Get the combined info and episode list
+      const { data } = await axios.get(`${BASE_URL}/info/${id}`);
+      
+      setAnimeData(data);
+      const fetchedEpisodes = data.episodes || [];
+      setEpisodes(fetchedEpisodes);
+      
+      if (fetchedEpisodes.length > 0) {
+        // Load the first episode automatically
+        loadEpisode(fetchedEpisodes[0].id);
+      } else {
+        setError("Mudkip couldn't find any linked episodes for this ID.");
+      }
+    } catch (err) {
+      console.error("Fetch Error:", err);
+      setError("The ocean is blocked! The API might be down or this ID is invalid.");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleSearch = async (e) => {
-    e.preventDefault();
-    if (!query) return;
-    setLoading(true);
-    setResults([]);
+  useEffect(() => { fetchInfo(); }, [id]);
 
+  const loadEpisode = async (episodeId) => {
     try {
-      // Trying the most common search path
-      const { data } = await axios.get(`${STABLE_API}/${query}`);
-      setResults(data.results || []);
-    } catch (err) { 
-      console.error("Primary API failed, trying backup...");
-      try {
-        // Backup: searching via query parameter
-        const backup = await axios.get(`${STABLE_API}?query=${query}`);
-        setResults(backup.data.results || []);
-      } catch (e) {
-        alert("Mudkip is having trouble reaching the ocean. Try a different search term!");
-      }
-    } finally { 
-      setLoading(false); 
+      setVideoUrl(''); 
+      setCurrentEp(episodeId);
+      
+      // Step 2: Get the streaming link using the Meta Watch route
+      const { data } = await axios.get(`${BASE_URL}/watch/${episodeId}`);
+      
+      // Find the best quality source
+      const stream = data.sources.find(s => s.quality === 'default') || 
+                     data.sources.find(s => s.quality === 'backup') || 
+                     data.sources[0];
+      
+      setVideoUrl(stream?.url || `https://www.2embed.cc/embedanime/${id}`);
+    } catch (err) {
+      console.error("Stream Error", err);
+      // Fallback to external player
+      setVideoUrl(`https://www.2embed.cc/embedanime/${id}`);
     }
   };
 
   return (
-    <div className="min-h-screen text-white font-sans pb-20 selection:bg-blue-600" style={{ backgroundColor: colors.bgDeep }}>
-      
-      <nav className="p-4 border-b border-white/5 flex justify-between items-center sticky top-0 z-[100] bg-[#060d17]/80 backdrop-blur-xl">
-        <div className="flex items-center gap-8">
-          <Link to="/" onClick={() => setResults([])} className="flex items-center gap-2 group">
-            <img src={MUDKIP_LOGO} className="w-10 h-10 group-hover:rotate-12 transition-transform" alt="Mudkip" />
-            <h1 className="text-2xl font-black italic tracking-tighter uppercase">MUDKIP.TV</h1>
-          </Link>
+    <div className="min-h-screen text-white font-sans" style={{ backgroundColor: colors.bgDeep }}>
+      {/* Header */}
+      <nav className="p-4 border-b border-white/5 flex items-center justify-between bg-[#060d17]/90 sticky top-0 z-50 backdrop-blur-md">
+        <Link to="/" className="flex items-center gap-2 text-gray-400 hover:text-blue-500 transition font-black text-[10px] uppercase tracking-widest">
+          <ArrowLeft size={18} /> Back to Nest
+        </Link>
+        <h1 className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-500 truncate max-w-md italic">
+          {animeData?.title?.english || animeData?.title?.romaji || "Mudkip.TV Stream"}
+        </h1>
+        <div className="w-20" />
+      </nav>
 
-          <div className="flex bg-white/5 rounded-2xl p-1 border border-white/10 shadow-inner">
-            <button onClick={() => setMode('anime')} className={`px-8 py-2 rounded-xl text-xs font-black transition-all ${mode === 'anime' ? 'bg-blue-600 shadow-lg' : 'text-gray-500 hover:text-white'}`}>ANIME</button>
-            <button onClick={() => setMode('manga')} className={`px-8 py-2 rounded-xl text-xs font-black transition-all ${mode === 'manga' ? 'bg-blue-600 shadow-lg' : 'text-gray-500 hover:text-white'}`}>MANGA</button>
+      <main className="max-w-[1600px] mx-auto p-6 grid grid-cols-1 lg:grid-cols-4 gap-8">
+        {/* Left Side: Video & Info */}
+        <div className="lg:col-span-3">
+          <div className="relative aspect-video bg-black rounded-[2.5rem] overflow-hidden border border-white/5 shadow-2xl">
+            {videoUrl ? (
+              <iframe 
+                src={videoUrl} 
+                className="w-full h-full" 
+                allowFullScreen 
+                title="Mudkip Player"
+                frameBorder="0"
+              />
+            ) : (
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                {error ? (
+                   <button onClick={fetchInfo} className="bg-blue-600 px-6 py-2 rounded-xl font-black text-[10px] flex items-center gap-2">
+                     <RefreshCw size={14} /> REFRESH SOURCES
+                   </button>
+                ) : (
+                  <div className="flex flex-col items-center gap-4">
+                    <Loader2 size={40} className="text-blue-500 animate-spin" />
+                    <p className="text-[10px] font-black uppercase tracking-widest text-gray-600">Syncing Mudkip Nodes...</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          
+          <div className="mt-8 p-10 rounded-[2.5rem] border border-white/5 bg-white/[0.02]">
+            <h2 className="text-3xl font-black italic uppercase tracking-tighter mb-4">
+                {animeData?.title?.english || animeData?.title?.romaji || "Anime Title"}
+            </h2>
+            <p className="text-gray-500 text-sm leading-relaxed max-w-3xl">
+                {animeData?.description?.replace(/<[^>]*>/g, '') || "Loading anime description..."}
+            </p>
           </div>
         </div>
 
-        <div>
-          {session ? (
-            <div className="flex items-center gap-4">
-              <span className="text-xs font-bold text-blue-500 lowercase">{session.user.email.split('@')[0]}</span>
-              <button onClick={() => supabase.auth.signOut()} className="bg-white/5 p-3 rounded-2xl border border-white/10 hover:bg-red-500 transition-colors">
-                <LogOut size={20} />
-              </button>
-            </div>
-          ) : (
-            <button onClick={() => setShowAuth(!showAuth)} className="bg-blue-600 px-8 py-2.5 rounded-2xl text-xs font-black shadow-lg shadow-blue-600/20">SIGN IN</button>
-          )}
-        </div>
-      </nav>
-
-      <main className="max-w-[1500px] mx-auto px-10 mt-12">
-        {showAuth && !session ? <div className="max-w-md mx-auto"><Auth /></div> : (
-          <>
-            {lastWatched && results.length === 0 && (
-              <Link to={`/watch/${lastWatched.media_id}`} className="mb-16 p-8 rounded-[3rem] border border-blue-600/20 bg-gradient-to-r from-blue-600/10 to-transparent flex items-center justify-between group hover:border-blue-600/50 transition-all block">
-                <div className="flex items-center gap-8">
-                   <div className="relative">
-                      <img src={lastWatched.image_url} className="w-20 h-28 object-cover rounded-2xl shadow-2xl" alt="poster" />
-                   </div>
-                   <div>
-                      <p className="text-blue-500 font-black text-xs uppercase tracking-[0.2em] mb-2 flex items-center gap-2">
-                        <Sparkles size={14} /> Continue Watching
-                      </p>
-                      <h2 className="text-4xl font-black italic tracking-tighter">{lastWatched.title}</h2>
-                      <p className="text-gray-500 font-bold mt-1 uppercase text-xs tracking-widest">Episode {lastWatched.episode_number}</p>
-                   </div>
-                </div>
-                <div className="bg-white text-black w-14 h-14 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <Play fill="black" size={24} className="translate-x-0.5" />
-                </div>
-              </Link>
-            )}
-
-            <form onSubmit={handleSearch} className="relative max-w-2xl mx-auto mb-16 group">
-              <input 
-                type="text" 
-                placeholder={`Search ${mode}...`}
-                className="w-full bg-white/5 border border-white/10 rounded-3xl py-4 px-14 outline-none focus:border-blue-500 transition-all text-lg shadow-2xl"
-                onChange={(e) => setQuery(e.target.value)}
-              />
-              <Search className="absolute left-5 top-5 text-gray-500 group-focus-within:text-blue-500 transition-colors" size={24} />
-              {loading && <Loader2 className="absolute right-5 top-5 text-blue-500 animate-spin" />}
-            </form>
-
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-10">
-              {results.map((item) => (
-                <Link to={`/watch/${item.id}`} key={item.id} className="group">
-                  <div className="relative aspect-[3/4.5] rounded-[2.5rem] overflow-hidden border border-white/5 transition-all duration-500 group-hover:-translate-y-3 group-hover:border-blue-500/50 shadow-2xl">
-                    <img src={item.image} className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity" alt="poster" />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-60" />
-                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-500">
-                      <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center shadow-2xl scale-50 group-hover:scale-100 transition-transform shadow-blue-600/40">
-                        <Play fill="white" size={32} className="translate-x-1" />
-                      </div>
-                    </div>
-                  </div>
-                  <h3 className="mt-5 text-[11px] font-black text-center group-hover:text-blue-500 transition tracking-tighter line-clamp-1 uppercase italic">
-                    {item.title.english || item.title.romaji}
-                  </h3>
-                </Link>
+        {/* Right Side: Episode Sidebar */}
+        <div className="lg:col-span-1">
+          <div className="bg-white/[0.02] rounded-[2.5rem] border border-white/5 p-8 h-full max-h-[85vh] flex flex-col shadow-inner">
+            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] mb-8 text-gray-500 italic flex items-center gap-2 font-bold">
+              <HardDrive size={14} className="text-blue-500" /> Episode List
+            </h3>
+            <div className="overflow-y-auto flex-1 space-y-3 pr-2 custom-scrollbar">
+              {episodes.map((ep) => (
+                <button 
+                  key={ep.id} 
+                  onClick={() => loadEpisode(ep.id)} 
+                  className={`w-full p-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all border ${
+                    currentEp === ep.id ? 'bg-blue-600 border-blue-500 shadow-lg' : 'bg-white/5 border-white/5 text-gray-600 hover:text-white hover:border-blue-500'
+                  }`}
+                >
+                  Episode {ep.number}
+                </button>
               ))}
+              {episodes.length === 0 && !loading && (
+                <div className="py-20 text-center opacity-30">
+                  <p className="text-[10px] font-black uppercase tracking-widest">No Links Found</p>
+                </div>
+              )}
             </div>
-          </>
-        )}
+          </div>
+        </div>
       </main>
+
+      {/* Custom Scrollbar Styles */}
+      <style dangerouslySetInnerHTML={{ __html: `.custom-scrollbar::-webkit-scrollbar { width: 4px; } .custom-scrollbar::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 10px; } .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #3a86ff; }` }} />
     </div>
   );
 }
 
-export default App;
+export default Player;
