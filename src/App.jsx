@@ -1,18 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Search, Play, BookOpen, User, LogOut, Loader2, Sparkles, Zap } from 'lucide-react';
+import { Search, Play, BookOpen, User, LogOut, Loader2, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { supabase } from './supabaseClient';
 import Auth from './Auth';
 
 const colors = {
   bgDeep: '#060d17',
-  accent: '#3a86ff',
-  orange: '#fb8500',
-  glass: 'rgba(255, 255, 255, 0.03)'
+  accent: '#3a86ff'
 };
 
 const MUDKIP_LOGO = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/258.png";
+
+// STABLE API MIRROR
+const STABLE_API = "https://consumet-api-production-e812.up.railway.app/meta/anilist";
 
 function App() {
   const [query, setQuery] = useState('');
@@ -36,14 +37,16 @@ function App() {
   }, []);
 
   const fetchLastWatched = async (userId) => {
-    const { data } = await supabase
-      .from('watch_history')
-      .select('*')
-      .eq('user_id', userId)
-      .order('updated_at', { ascending: false })
-      .limit(1)
-      .single();
-    if (data) setLastWatched(data);
+    try {
+      const { data } = await supabase
+        .from('watch_history')
+        .select('*')
+        .eq('user_id', userId)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(); // maybeSingle prevents 406 errors if empty
+      if (data) setLastWatched(data);
+    } catch (e) { console.error("History fetch error:", e); }
   };
 
   const handleSearch = async (e) => {
@@ -51,13 +54,16 @@ function App() {
     if (!query) return;
     setLoading(true);
     try {
-      const endpoint = `https://api.consumet.org/meta/anilist/${query}`;
-      const { data } = await axios.get(endpoint);
+      const { data } = await axios.get(`${STABLE_API}/${query}`);
       const filtered = data.results.filter(item => 
         mode === 'anime' ? (item.type === 'ANIME' || item.type === 'TV') : item.type === 'MANGA'
       );
       setResults(filtered || data.results);
-    } catch (err) { console.error(err); } finally { setLoading(false); }
+    } catch (err) { 
+      console.error("API Error:", err); 
+    } finally { 
+      setLoading(false); 
+    }
   };
 
   return (
@@ -79,50 +85,47 @@ function App() {
         <div>
           {session ? (
             <div className="flex items-center gap-4">
-              <div className="text-right hidden sm:block">
-                 <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest">Logged in as</p>
-                 <p className="text-sm font-bold">{session.user.email.split('@')[0]}</p>
-              </div>
-              <button onClick={() => supabase.signOut()} className="bg-white/5 p-3 rounded-2xl border border-white/10 hover:bg-red-500 transition-colors">
+              <span className="text-xs font-bold text-blue-500 lowercase">{session.user.email.split('@')[0]}</span>
+              <button onClick={() => supabase.auth.signOut()} className="bg-white/5 p-3 rounded-2xl border border-white/10 hover:bg-red-500 transition-colors">
                 <LogOut size={20} />
               </button>
             </div>
           ) : (
-            <button onClick={() => setShowAuth(!showAuth)} className="bg-blue-600 px-8 py-2.5 rounded-2xl text-xs font-black shadow-lg shadow-blue-600/30">SIGN IN</button>
+            <button onClick={() => setShowAuth(!showAuth)} className="bg-blue-600 px-8 py-2.5 rounded-2xl text-xs font-black shadow-lg shadow-blue-600/20">SIGN IN</button>
           )}
         </div>
       </nav>
 
       <main className="max-w-[1500px] mx-auto px-10 mt-12">
-        {showAuth && !session ? <Auth /> : (
+        {showAuth && !session ? <div className="max-w-md mx-auto"><Auth /></div> : (
           <>
-            {/* ANIKKU STYLE HERO BUTTON (CONTINUE WATCHING) */}
+            {/* CONTINUE WATCHING (Anikku Style) */}
             {lastWatched && results.length === 0 && (
-              <div className="mb-16 p-8 rounded-[3rem] border border-blue-600/20 bg-gradient-to-r from-blue-600/10 to-transparent flex items-center justify-between group cursor-pointer hover:border-blue-600/50 transition-all">
+              <Link to={`/watch/${lastWatched.media_id}`} className="mb-16 p-8 rounded-[3rem] border border-blue-600/20 bg-gradient-to-r from-blue-600/10 to-transparent flex items-center justify-between group hover:border-blue-600/50 transition-all block">
                 <div className="flex items-center gap-8">
                    <div className="relative">
-                      <img src={lastWatched.image_url} className="w-20 h-28 object-cover rounded-2xl shadow-2xl" />
+                      <img src={lastWatched.image_url} className="w-20 h-28 object-cover rounded-2xl shadow-2xl" alt="poster" />
                       <div className="absolute inset-0 bg-blue-600/20 rounded-2xl" />
                    </div>
                    <div>
                       <p className="text-blue-500 font-black text-xs uppercase tracking-[0.2em] mb-2 flex items-center gap-2">
-                        <Sparkles size={14} /> Continue {lastWatched.type === 'anime' ? 'Watching' : 'Reading'}
+                        <Sparkles size={14} /> Continue Watching
                       </p>
                       <h2 className="text-4xl font-black italic tracking-tighter">{lastWatched.title}</h2>
-                      <p className="text-gray-500 font-bold mt-1">Episode {lastWatched.episode_number}</p>
+                      <p className="text-gray-500 font-bold mt-1 uppercase text-xs tracking-widest">Episode {lastWatched.episode_number}</p>
                    </div>
                 </div>
-                <Link to={`/watch/${lastWatched.media_id}`} className="bg-white text-black w-14 h-14 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform shadow-xl">
+                <div className="bg-white text-black w-14 h-14 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform shadow-xl">
                   <Play fill="black" size={24} className="translate-x-0.5" />
-                </Link>
-              </div>
+                </div>
+              </Link>
             )}
 
             <form onSubmit={handleSearch} className="relative max-w-2xl mx-auto mb-16 group">
               <input 
                 type="text" 
                 placeholder={`Search ${mode}...`}
-                className="w-full bg-white/5 border border-white/10 rounded-3xl py-4.5 px-14 outline-none focus:border-blue-500 transition-all text-lg shadow-2xl"
+                className="w-full bg-white/5 border border-white/10 rounded-3xl py-4 px-14 outline-none focus:border-blue-500 transition-all text-lg shadow-2xl"
                 onChange={(e) => setQuery(e.target.value)}
               />
               <Search className="absolute left-5 top-5 text-gray-500 group-focus-within:text-blue-500 transition-colors" size={24} />
@@ -132,16 +135,16 @@ function App() {
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-10">
               {results.map((item) => (
                 <Link to={`/watch/${item.id}`} key={item.id} className="group">
-                  <div className="relative aspect-[3/4.5] rounded-[2.5rem] overflow-hidden border border-white/5 transition-all duration-500 group-hover:-translate-y-3 group-hover:border-blue-600/50 shadow-2xl">
+                  <div className="relative aspect-[3/4.5] rounded-[2.5rem] overflow-hidden border border-white/5 transition-all duration-500 group-hover:-translate-y-3 group-hover:border-blue-500/50 shadow-2xl">
                     <img src={item.image} className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity" alt="poster" />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-60" />
                     <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-500">
-                      <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center shadow-2xl scale-50 group-hover:scale-100 transition-transform">
+                      <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center shadow-2xl scale-50 group-hover:scale-100 transition-transform shadow-blue-600/40">
                         <Play fill="white" size={32} className="translate-x-1" />
                       </div>
                     </div>
                   </div>
-                  <h3 className="mt-5 text-sm font-black text-center group-hover:text-blue-500 transition tracking-tight line-clamp-1 uppercase italic">
+                  <h3 className="mt-5 text-[11px] font-black text-center group-hover:text-blue-500 transition tracking-tighter line-clamp-1 uppercase italic">
                     {item.title.english || item.title.romaji}
                   </h3>
                 </Link>
