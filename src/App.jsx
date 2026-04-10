@@ -1,9 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Search, Play, BookOpen, User, Loader2, LogOut, ShieldCheck, X, Users, Star, Info } from 'lucide-react';
+import { Search, Play, BookOpen, User, Loader2, LogOut, ShieldCheck, X, Users, Star, BookMarked, History, TrendingUp } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { supabase } from './supabaseClient';
 import Auth from './Auth';
+
+const colors = {
+  bgDeep: '#060d17',      // Darker Navy
+  bgCard: '#0f1c2e',      // Mudkip Blue
+  accent: '#3a86ff',      // Fin Blue
+  secondary: '#fb8500',   // Gill Orange
+  text: '#e0e1dd'
+};
 
 function App() {
   const [query, setQuery] = useState('');
@@ -16,19 +24,31 @@ function App() {
   const [showAdminMenu, setShowAdminMenu] = useState(false);
   const [userCount, setUserCount] = useState(0);
 
+  const [recent, setRecent] = useState([]);
+  const [bookmarks, setBookmarks] = useState([]);
+
+  const MUDKIP_AVATAR = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/258.png";
+  const MUDKIP_BG = "https://images5.alphacoders.com/606/606411.jpg";
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      if (session) checkAdmin(session.user.id);
+      if (session) {
+        checkAdmin(session.user.id);
+        fetchNestData(session.user.id);
+      }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       if (session) {
         checkAdmin(session.user.id);
+        fetchNestData(session.user.id);
         setShowAuth(false);
       } else {
         setIsAdmin(false);
+        setRecent([]);
+        setBookmarks([]);
       }
     });
 
@@ -44,6 +64,13 @@ function App() {
     }
   };
 
+  const fetchNestData = async (userId) => {
+    const { data: historyData } = await supabase.from('watch_history').select('*').eq('user_id', userId).order('updated_at', { ascending: false }).limit(4);
+    setRecent(historyData || []);
+    const { data: bookmarkData } = await supabase.from('bookmarks').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(4);
+    setBookmarks(bookmarkData || []);
+  };
+
   const handleSearch = async (e) => {
     e.preventDefault();
     if (!query) return;
@@ -51,10 +78,7 @@ function App() {
     try {
       const endpoint = `https://api-consumet-org-five.vercel.app/meta/anilist/${query}`;
       const { data } = await axios.get(endpoint);
-      const filtered = data.results.filter(item => {
-        if (mode === 'anime') return item.type === 'ANIME' || item.type === 'TV';
-        return item.type === 'MANGA';
-      });
+      const filtered = data.results.filter(item => mode === 'anime' ? (item.type === 'ANIME' || item.type === 'TV') : item.type === 'MANGA');
       setResults(filtered || data.results);
     } catch (err) {
       console.error("Search failed", err);
@@ -64,148 +88,155 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0b0e14] text-gray-100 font-sans selection:bg-blue-500 selection:text-white">
+    <div className="min-h-screen text-gray-100 font-sans selection:bg-accent overflow-x-hidden relative">
+      {/* Background Layer */}
+      <div className="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat opacity-10 grayscale hover:grayscale-0 transition-all duration-1000" style={{ backgroundImage: `url(${MUDKIP_BG})` }} />
+      <div className="fixed inset-0 z-0" style={{ backgroundColor: colors.bgDeep, opacity: 0.92 }} />
+
       {/* Navbar */}
-      <nav className="p-4 border-b border-gray-800/50 flex justify-between items-center bg-[#0b0e14]/80 sticky top-0 z-[60] backdrop-blur-xl">
-        <div className="flex items-center gap-6">
-          <Link to="/" className="flex items-center gap-2 group">
-            <div className="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center group-hover:rotate-12 transition-transform shadow-[0_0_15px_rgba(37,99,235,0.4)]">
-              <Play className="fill-white text-white translate-x-0.5" size={18} />
-            </div>
-            <h1 className="text-2xl font-black text-white tracking-tighter uppercase hidden md:block">
-              MUDKIP<span className="text-blue-500">.TV</span>
-            </h1>
+      <nav className="p-5 border-b border-white/5 flex justify-between items-center sticky top-0 z-[60] backdrop-blur-2xl" style={{ backgroundColor: `${colors.bgDeep}cc` }}>
+        <div className="flex items-center gap-10">
+          <Link to="/" onClick={() => setResults([])} className="flex items-center gap-3 group">
+            <img src={MUDKIP_AVATAR} alt="logo" className="w-10 h-10 group-hover:scale-125 transition-transform" />
+            <h1 className="text-2xl font-black text-white tracking-tighter uppercase italic">MUDKIP<span style={{ color: colors.accent }}>.TV</span></h1>
           </Link>
 
-          {/* Desktop Tabs */}
-          <div className="hidden lg:flex bg-gray-900/50 rounded-full p-1 border border-gray-800">
-            <button onClick={() => setMode('anime')} className={`px-5 py-1.5 rounded-full text-xs font-black transition-all ${mode === 'anime' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-500 hover:text-white'}`}>ANIME</button>
-            <button onClick={() => setMode('manga')} className={`px-5 py-1.5 rounded-full text-xs font-black transition-all ${mode === 'manga' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-500 hover:text-white'}`}>MANGA</button>
+          <div className="flex bg-white/5 rounded-2xl p-1 border border-white/5 shadow-inner">
+            <button onClick={() => setMode('anime')} className={`px-8 py-2 rounded-xl text-xs font-black transition-all ${mode === 'anime' ? 'bg-blue-600 text-white shadow-xl shadow-blue-600/20' : 'text-gray-500 hover:text-white'}`}>ANIME</button>
+            <button onClick={() => setMode('manga')} className={`px-8 py-2 rounded-xl text-xs font-black transition-all ${mode === 'manga' ? 'bg-blue-600 text-white shadow-xl shadow-blue-600/20' : 'text-gray-500 hover:text-white'}`}>MANGA</button>
           </div>
         </div>
         
-        <form onSubmit={handleSearch} className="flex-1 max-w-lg mx-4 relative group">
+        <form onSubmit={handleSearch} className="flex-1 max-w-xl mx-10 relative group">
           <input 
             type="text" 
-            placeholder={`Search ${mode}...`}
-            className="w-full bg-gray-900/50 border border-gray-800 rounded-xl py-2.5 px-11 focus:ring-2 focus:ring-blue-600 focus:bg-gray-900 outline-none text-sm transition-all placeholder:text-gray-600"
+            placeholder={`Search the ocean for ${mode}...`}
+            className="w-full bg-white/5 border border-white/10 rounded-2xl py-3.5 px-12 focus:ring-2 focus:border-transparent outline-none text-sm transition-all placeholder:text-gray-600"
+            style={{ '--tw-ring-color': colors.accent }}
             onChange={(e) => setQuery(e.target.value)}
           />
-          <Search className="absolute left-4 top-3 text-gray-500 group-focus-within:text-blue-500 transition-colors" size={18} />
-          {loading && <Loader2 className="absolute right-4 top-3 text-blue-500 animate-spin" size={18} />}
+          <Search className="absolute left-4 top-4 text-gray-600 group-focus-within:text-accent transition-colors" size={20} />
         </form>
 
-        <div className="flex gap-3 items-center">
+        <div className="flex gap-4 items-center">
           {isAdmin && (
-            <button onClick={() => setShowAdminMenu(true)} className="bg-yellow-500 text-black px-3 py-1.5 rounded-lg flex items-center gap-2 text-[10px] font-black hover:bg-yellow-400 transition shadow-[0_0_10px_rgba(234,179,8,0.3)]">
-              <ShieldCheck size={14} /> ADMIN
+            <button onClick={() => setShowAdminMenu(true)} className="bg-orange-500 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 text-[10px] font-black hover:scale-105 transition shadow-lg shadow-orange-500/20">
+              <ShieldCheck size={16} /> ADMIN PANEL
             </button>
           )}
-
           {session ? (
-            <button onClick={() => supabase.auth.signOut()} className="bg-gray-900 border border-gray-800 text-gray-400 p-2.5 rounded-xl hover:bg-red-500 hover:text-white hover:border-red-500 transition-all">
-              <LogOut size={20}/>
+            <button onClick={() => supabase.auth.signOut()} className="bg-white/5 border border-white/10 text-gray-400 p-3 rounded-2xl hover:bg-red-500/20 hover:text-red-500 transition-all">
+              <LogOut size={22}/>
             </button>
           ) : (
-            <button onClick={() => setShowAuth(!showAuth)} className="bg-blue-600 text-white p-2.5 rounded-xl hover:bg-blue-500 transition-all shadow-lg shadow-blue-600/20">
-              <User size={20}/>
-            </button>
+            <button onClick={() => setShowAuth(!showAuth)} className="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black hover:bg-blue-500 transition-all shadow-xl shadow-blue-600/30 text-xs">SIGN IN</button>
           )}
         </div>
       </nav>
 
-      {/* Admin Panel Modal */}
-      {showAdminMenu && (
-        <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-300">
-          <div className="bg-gray-900 border border-yellow-500/30 rounded-3xl w-full max-w-md p-8 shadow-2xl overflow-hidden relative">
-            <div className="absolute top-0 left-0 w-full h-1 bg-yellow-500"></div>
-            <div className="flex justify-between items-center mb-8">
-              <h2 className="text-2xl font-black text-yellow-500 flex items-center gap-3 italic">
-                <ShieldCheck size={32} /> SYSTEM ADMIN
-              </h2>
-              <button onClick={() => setShowAdminMenu(false)} className="bg-gray-800 p-2 rounded-full text-gray-400 hover:text-white hover:bg-gray-700 transition"><X size={20}/></button>
-            </div>
-            <div className="space-y-4">
-              <div className="bg-gradient-to-br from-gray-800 to-gray-900 p-6 rounded-2xl border border-gray-700 flex items-center justify-between">
-                <div>
-                  <p className="text-gray-500 text-xs font-black uppercase tracking-widest">Total Registered Users</p>
-                  <p className="text-4xl font-black mt-1">{userCount}</p>
-                </div>
-                <Users size={40} className="text-blue-500 opacity-20" />
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <main className="max-w-[1600px] mx-auto pb-20">
+      <main className="max-w-[1600px] mx-auto pb-32 px-10 relative z-10">
         {showAuth && !session ? <Auth /> : (
-          <>
-            {/* Hero Section (Only shows when no results) */}
-            {results.length === 0 && !loading && (
-              <div className="relative w-full h-[60vh] md:h-[75vh] flex items-end p-6 md:p-16 overflow-hidden animate-in fade-in zoom-in duration-700">
-                <div className="absolute inset-0 z-0">
-                  <img src="https://images.alphacoders.com/132/1322479.png" alt="Hero" className="w-full h-full object-cover opacity-40" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-[#0b0e14] via-[#0b0e14]/60 to-transparent"></div>
-                  <div className="absolute inset-0 bg-gradient-to-r from-[#0b0e14] via-transparent to-transparent"></div>
-                </div>
-                
-                <div className="relative z-10 max-w-2xl mb-10">
-                  <div className="flex items-center gap-2 mb-4">
-                    <span className="bg-blue-600 text-[10px] font-black px-2 py-1 rounded text-white uppercase tracking-tighter">New Series</span>
-                    <span className="flex items-center gap-1 text-yellow-500 text-xs font-bold"><Star size={14} fill="currentColor"/> 9.8 Rating</span>
-                  </div>
-                  <h2 className="text-5xl md:text-7xl font-black text-white leading-none mb-6 italic tracking-tighter">JUJUTSU <br/><span className="text-blue-500">KAISEN</span></h2>
-                  <p className="text-gray-400 text-lg mb-8 line-clamp-3 font-medium">Step into a world where cursed energy thrives. Experience the journey of Yuji Itadori as he navigates the dangerous path of a Jujutsu Sorcerer.</p>
-                  <div className="flex gap-4">
-                    <button className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-2xl font-black flex items-center gap-3 transition-all transform hover:scale-105 shadow-xl shadow-blue-600/30">
-                      <Play fill="currentColor" size={20}/> WATCH NOW
-                    </button>
-                    <button className="bg-white/10 hover:bg-white/20 backdrop-blur-md text-white px-8 py-4 rounded-2xl font-black flex items-center gap-3 transition-all">
-                      <Info size={20}/> DETAILS
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Mobile Tab Bar */}
-            <div className="lg:hidden flex justify-center p-6">
-                <div className="bg-gray-900/50 border border-gray-800 rounded-2xl p-1.5 flex w-full max-w-sm shadow-xl">
-                    <button onClick={() => setMode('anime')} className={`flex-1 py-3 rounded-xl text-xs font-black transition-all ${mode === 'anime' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-500'}`}>ANIME</button>
-                    <button onClick={() => setMode('manga')} className={`flex-1 py-3 rounded-xl text-xs font-black transition-all ${mode === 'manga' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-500'}`}>MANGA</button>
-                </div>
-            </div>
-
-            {/* Search Results Grid */}
-            <div className="px-6">
-              {results.length > 0 && (
-                <h2 className="text-xl font-black mb-8 flex items-center gap-3 uppercase tracking-[0.2em] text-gray-500">
-                  Found <span className="text-white">{results.length}</span> {mode} Results
+          <div className="mt-12 space-y-20">
+            {results.length > 0 ? (
+              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <h2 className="text-4xl font-black mb-12 flex items-center gap-4 italic uppercase tracking-tighter">
+                  <div className="w-2 h-10 bg-blue-600 rounded-full" /> Search Results
                 </h2>
-              )}
-
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6 md:gap-8">
-                {results.map((item) => (
-                  <Link to={`/watch/${item.id}`} key={item.id} className="group block relative">
-                    <div className="relative overflow-hidden rounded-[2rem] aspect-[3/4.2] bg-gray-900 border border-gray-800 transition-all duration-500 group-hover:border-blue-600/50 group-hover:shadow-[0_20px_50px_rgba(37,99,235,0.2)]">
-                      <img src={item.image} alt="poster" className="object-cover w-full h-full group-hover:scale-110 transition duration-700 opacity-80 group-hover:opacity-100" />
-                      <div className="absolute inset-0 bg-gradient-to-t from-[#0b0e14] via-transparent to-transparent opacity-60"></div>
-                      <div className="absolute bottom-4 left-0 right-0 px-4 translate-y-2 group-hover:translate-y-0 transition-transform duration-500">
-                        <div className="bg-white/10 backdrop-blur-md border border-white/10 w-full py-3 rounded-2xl text-[10px] font-black text-center text-white opacity-0 group-hover:opacity-100 transition-opacity">
-                          {mode === 'anime' ? 'START STREAMING' : 'READ CHAPTERS'}
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6 gap-10">
+                  {results.map((item) => (
+                    <Link to={`/watch/${item.id}`} key={item.id} className="group block relative">
+                      <div className="relative overflow-hidden rounded-[2.5rem] aspect-[3/4.5] border border-white/5 transition-all duration-500 group-hover:border-blue-500/50 shadow-2xl group-hover:-translate-y-3" style={{ backgroundColor: colors.bgCard }}>
+                        <img src={item.image} alt="poster" className="object-cover w-full h-full opacity-80 group-hover:opacity-100 transition-opacity" />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all">
+                           <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center shadow-2xl scale-50 group-hover:scale-100 transition-transform"><Play fill="white" size={32} /></div>
                         </div>
                       </div>
-                    </div>
-                    <h3 className="mt-4 text-sm font-bold line-clamp-1 group-hover:text-blue-500 transition-colors px-2">
-                      {item.title.english || item.title.romaji}
-                    </h3>
-                    <p className="px-2 text-[10px] font-black text-gray-600 uppercase mt-1 tracking-widest">{item.releaseDate || 'Ongoing'}</p>
-                  </Link>
-                ))}
+                      <h3 className="mt-5 text-sm font-black line-clamp-1 group-hover:text-blue-400 transition-colors px-2">{item.title.english || item.title.romaji}</h3>
+                    </Link>
+                  ))}
+                </div>
               </div>
-            </div>
-          </>
+            ) : (
+              <>
+                {/* Account Section - The Nest */}
+                <div className="flex items-center justify-between bg-white/[0.02] border border-white/5 p-12 rounded-[3.5rem] backdrop-blur-md">
+                   <div className="flex items-center gap-10">
+                      <div className="relative">
+                        <img src={MUDKIP_AVATAR} alt="Avatar" className="w-32 h-32 rounded-[2.5rem] bg-blue-600/20 p-4 border border-blue-500/20 shadow-2xl shadow-blue-600/10" />
+                        <div className="absolute -bottom-2 -right-2 bg-blue-600 p-2 rounded-xl border-4 border-[#060d17]"><Star size={16} fill="white" /></div>
+                      </div>
+                      <div>
+                        <p className="text-blue-500 font-black text-xs uppercase tracking-[0.3em] mb-2">Authenticated Mudkip</p>
+                        <h2 className="text-6xl font-black tracking-tighter text-white italic">{session?.user?.email.split('@')[0] || 'Trainer'}</h2>
+                        <div className="flex gap-4 mt-6">
+                           <div className="bg-white/5 px-4 py-2 rounded-xl text-[10px] font-black text-gray-400 border border-white/5 uppercase">Lv. 100 Streaming</div>
+                           <div className="bg-white/5 px-4 py-2 rounded-xl text-[10px] font-black text-gray-400 border border-white/5 uppercase">Master Rank Reader</div>
+                        </div>
+                      </div>
+                   </div>
+                   <div className="hidden xl:flex gap-10">
+                      <div className="text-center">
+                        <p className="text-3xl font-black text-white">{recent.length}</p>
+                        <p className="text-[10px] font-black text-gray-600 uppercase tracking-widest mt-1">Watched</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-3xl font-black text-white">{bookmarks.length}</p>
+                        <p className="text-[10px] font-black text-gray-600 uppercase tracking-widest mt-1">Saved</p>
+                      </div>
+                   </div>
+                </div>
+
+                {/* Account Titles - The 3 Main Sections */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
+                   {/* 1. Recent Activity */}
+                   <div className="bg-white/[0.02] border border-white/5 p-8 rounded-[2.5rem]">
+                      <h3 className="text-xl font-black mb-8 flex items-center gap-3 uppercase italic text-blue-500"><History /> Recent Watch</h3>
+                      <div className="space-y-4">
+                        {recent.length > 0 ? recent.map(r => (
+                          <Link key={r.id} className="flex items-center gap-4 group p-2 hover:bg-white/5 rounded-2xl transition">
+                            <img src={r.image_url} className="w-12 h-16 rounded-lg object-cover" />
+                            <div><p className="text-sm font-black text-white line-clamp-1">{r.title}</p><p className="text-[10px] text-gray-600 font-bold uppercase mt-1">EP {r.episode_number}</p></div>
+                          </Link>
+                        )) : <p className="text-gray-700 text-sm font-bold p-10 text-center">No recent history.</p>}
+                      </div>
+                   </div>
+
+                   {/* 2. Bookmarks */}
+                   <div className="bg-white/[0.02] border border-white/5 p-8 rounded-[2.5rem]">
+                      <h3 className="text-xl font-black mb-8 flex items-center gap-3 uppercase italic text-orange-500"><BookMarked /> Bookmarks</h3>
+                      <div className="space-y-4">
+                        {bookmarks.length > 0 ? bookmarks.map(b => (
+                          <Link key={b.id} className="flex items-center gap-4 group p-2 hover:bg-white/5 rounded-2xl transition">
+                            <img src={b.image_url} className="w-12 h-16 rounded-lg object-cover" />
+                            <div><p className="text-sm font-black text-white line-clamp-1">{b.title}</p><p className="text-[10px] text-gray-600 font-bold uppercase mt-1">{b.type}</p></div>
+                          </Link>
+                        )) : <p className="text-gray-700 text-sm font-bold p-10 text-center">Nothing saved yet.</p>}
+                      </div>
+                   </div>
+
+                   {/* 3. Recommended / Top Titles */}
+                   <div className="bg-white/[0.02] border border-white/5 p-8 rounded-[2.5rem]">
+                      <h3 className="text-xl font-black mb-8 flex items-center gap-3 uppercase italic text-yellow-500"><TrendingUp /> Top Titles</h3>
+                      <div className="space-y-6">
+                         <div className="flex items-center gap-4 bg-blue-600/10 p-4 rounded-3xl border border-blue-500/20">
+                            <div className="text-2xl font-black text-blue-500">01</div>
+                            <div className="font-black text-sm tracking-tight">One Piece</div>
+                         </div>
+                         <div className="flex items-center gap-4 bg-white/5 p-4 rounded-3xl border border-white/5">
+                            <div className="text-2xl font-black text-gray-700">02</div>
+                            <div className="font-black text-sm tracking-tight text-gray-400">Jujutsu Kaisen</div>
+                         </div>
+                         <div className="flex items-center gap-4 bg-white/5 p-4 rounded-3xl border border-white/5">
+                            <div className="text-2xl font-black text-gray-700">03</div>
+                            <div className="font-black text-sm tracking-tight text-gray-400">Naruto Shippuden</div>
+                         </div>
+                      </div>
+                   </div>
+                </div>
+              </>
+            )}
+          </div>
         )}
       </main>
     </div>
