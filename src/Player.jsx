@@ -1,108 +1,168 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import axios from 'axios';
-import { ArrowLeft, Info, AlertCircle, Loader2 } from 'lucide-react';
+import { ArrowLeft, Play, Loader2, AlertCircle, ChevronRight, RefreshCw } from 'lucide-react';
+
+const colors = {
+  bgDeep: '#060d17',
+  bgCard: '#0f1c2e',
+  accent: '#3a86ff',
+  orange: '#fb8500'
+};
+
+// Switching to a more stable public instance
+const BASE_URL = "https://api.consumet.org/meta/anilist";
 
 function Player() {
-  const { id } = useParams(); 
-  const [videoUrl, setVideoUrl] = useState(null);
+  const { id } = useParams();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [title, setTitle] = useState('');
+  const [animeData, setAnimeData] = useState(null);
+  const [episodes, setEpisodes] = useState([]);
+  const [currentEp, setCurrentEp] = useState(null);
+  const [videoUrl, setVideoUrl] = useState('');
+
+  const fetchInfo = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      // Fetching info from the primary stable API
+      const { data } = await axios.get(`${BASE_URL}/info/${id}`);
+      setAnimeData(data);
+      setEpisodes(data.episodes || []);
+      
+      if (data.episodes && data.episodes.length > 0) {
+        loadEpisode(data.episodes[0].id);
+      } else {
+        setError("This title has no episodes available yet.");
+      }
+    } catch (err) {
+      console.error(err);
+      setError("The Mudkip server is timed out. Try refreshing or check back in a minute!");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const getStream = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-
-        // 1. Get Anime Info
-        const infoRes = await axios.get(`https://api-consumet-org-five.vercel.app/meta/anilist/info/${id}`);
-        setTitle(infoRes.data.title.english || infoRes.data.title.romaji);
-        
-        if (!infoRes.data.episodes || infoRes.data.episodes.length === 0) {
-            throw new Error("No episodes found for this title.");
-        }
-
-        const firstEpId = infoRes.data.episodes[0].id;
-        
-        // 2. Get Video Link
-        const watchRes = await axios.get(`https://api-consumet-org-five.vercel.app/anime/gogoanime/watch/${firstEpId}`);
-        
-        // Use the best available source
-        const stream = watchRes.data.headers?.Referer || watchRes.data.sources[0]?.url;
-        
-        if (!stream) throw new Error("Could not find a working stream.");
-        
-        setVideoUrl(stream);
-      } catch (err) {
-        console.error("Stream Error:", err);
-        setError(err.response?.status === 504 ? "The server is overloaded (504). Try refreshing in a few seconds!" : err.message);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    getStream();
+    fetchInfo();
   }, [id]);
 
+  const loadEpisode = async (episodeId) => {
+    try {
+      setVideoUrl(''); 
+      setCurrentEp(episodeId);
+      // Gogoanime is the most stable provider for streaming links
+      const { data } = await axios.get(`https://api.consumet.org/anime/gogoanime/watch/${episodeId}`);
+      
+      // We prioritize the 'default' or first high-quality source
+      const stream = data.sources.find(s => s.quality === 'default') || data.sources[0];
+      setVideoUrl(stream?.url || data.headers?.Referer);
+    } catch (err) {
+      console.error("Stream Error", err);
+      // If primary stream fails, try a backup embed
+      setVideoUrl(`https://www.2embed.cc/embedanime/${id}`);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-[#0b0e14] text-white font-sans">
-      {/* Top Bar */}
-      <nav className="p-4 bg-gray-900/80 backdrop-blur-md border-b border-gray-800 flex items-center gap-4">
-        <Link to="/" className="p-2 hover:bg-gray-800 rounded-full transition text-accent">
-          <ArrowLeft size={24} />
+    <div className="min-h-screen text-white font-sans" style={{ backgroundColor: colors.bgDeep }}>
+      <nav className="p-4 border-b border-white/5 flex items-center justify-between bg-[#060d17]/90 sticky top-0 z-50 backdrop-blur-md">
+        <Link to="/" className="flex items-center gap-2 text-gray-400 hover:text-blue-500 transition font-black text-xs uppercase tracking-widest">
+          <ArrowLeft size={18} /> Back to Nest
         </Link>
-        <h1 className="text-lg font-bold truncate uppercase tracking-tighter">
-          {loading ? "Loading..." : `Watching: `}
-          <span className="text-accent">{title || id}</span>
+        <h1 className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-500 truncate max-w-md">
+          {animeData?.title?.english || "Streaming Now"}
         </h1>
+        <div className="w-20" />
       </nav>
 
-      <main className="max-w-6xl mx-auto p-4 md:p-8">
-        {/* Video Frame */}
-        <div className="relative aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl border border-gray-800">
-          {loading ? (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900">
-              <Loader2 className="w-12 h-12 text-accent animate-spin mb-4" />
-              <p className="text-gray-500 animate-pulse">Summoning the stream...</p>
+      <main className="max-w-[1600px] mx-auto p-6 grid grid-cols-1 lg:grid-cols-4 gap-8">
+        
+        <div className="lg:col-span-3">
+          <div className="relative aspect-video bg-black rounded-[2.5rem] overflow-hidden shadow-2xl border border-white/5">
+            {videoUrl ? (
+              <iframe 
+                src={videoUrl} 
+                className="w-full h-full" 
+                allowFullScreen 
+                title="Mudkip Stream"
+              />
+            ) : (
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                {error ? (
+                  <div className="text-center px-6">
+                    <AlertCircle size={48} className="text-red-500 mb-4 mx-auto" />
+                    <p className="text-gray-400 font-bold mb-6">{error}</p>
+                    <button onClick={fetchInfo} className="flex items-center gap-2 bg-blue-600 px-6 py-2 rounded-xl font-black text-xs hover:bg-blue-500 transition mx-auto">
+                      <RefreshCw size={14} /> RETRY CONNECTION
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <Loader2 size={48} className="text-blue-500 animate-spin mb-4" />
+                    <p className="text-gray-500 font-black uppercase tracking-widest text-xs">Diving for stream...</p>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="mt-8 p-10 rounded-[2.5rem] border border-white/5 bg-white/[0.02]">
+            <h2 className="text-3xl font-black italic uppercase tracking-tighter mb-4 text-white">
+              {animeData?.title?.english || animeData?.title?.romaji}
+            </h2>
+            <div className="flex gap-4 mb-8">
+              <span className="bg-blue-600 text-white px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider italic">
+                {animeData?.status || 'Active'}
+              </span>
+              <span className="text-orange-500 px-3 py-1 rounded-lg text-[10px] font-black border border-orange-500/20 uppercase tracking-wider">
+                {animeData?.releaseDate || '2026'}
+              </span>
             </div>
-          ) : error ? (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 p-6 text-center">
-              <AlertCircle className="w-16 h-16 text-red-500 mb-4" />
-              <h3 className="text-xl font-bold">Oops! Something went wrong</h3>
-              <p className="text-gray-400 mt-2 max-w-md">{error}</p>
-              <button 
-                onClick={() => window.location.reload()}
-                className="mt-6 bg-accent px-6 py-2 rounded-full font-bold hover:scale-105 transition"
-              >
-                Try Again
-              </button>
-            </div>
-          ) : (
-            <iframe 
-              src={videoUrl} 
-              className="w-full h-full" 
-              allowFullScreen 
-              scrolling="no"
-              title="Mudkip Player"
-            />
-          )}
+            <p className="text-gray-500 text-sm leading-relaxed font-medium">
+              {animeData?.description?.replace(/<[^>]*>/g, '') || "No description available for this title."}
+            </p>
+          </div>
         </div>
 
-        {/* Info Area */}
-        <div className="mt-8 bg-gray-900/50 p-6 rounded-2xl border border-gray-800">
-            <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-              <Info className="text-accent" /> About this Title
-            </h2>
-            <p className="text-gray-400 leading-relaxed">
-              ID: {id} <br />
-              You're watching the first episode. We'll be setting up the 
-              <strong> Supabase Database</strong> next so you can save your progress and 
-              actually have a "Continue Watching" list!
-            </p>
+        <div className="lg:col-span-1">
+          <div className="bg-white/[0.02] rounded-[2.5rem] border border-white/5 p-8 h-full max-h-[80vh] flex flex-col">
+            <h3 className="text-xs font-black uppercase tracking-[0.2em] mb-8 flex items-center gap-3 text-gray-500 italic">
+              <Play className="text-blue-500" size={16} fill="currentColor" /> Episode List
+            </h3>
+            
+            <div className="overflow-y-auto flex-1 custom-scrollbar space-y-3">
+              {episodes.map((ep) => (
+                <button
+                  key={ep.id}
+                  onClick={() => loadEpisode(ep.id)}
+                  className={`w-full flex items-center justify-between p-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all border ${
+                    currentEp === ep.id 
+                    ? 'bg-blue-600 border-blue-500 text-white shadow-xl shadow-blue-600/20' 
+                    : 'bg-white/5 border-white/5 text-gray-600 hover:text-white hover:border-blue-500/50'
+                  }`}
+                >
+                  <span>Episode {ep.number}</span>
+                  {currentEp === ep.id && <ChevronRight size={14} />}
+                </button>
+              ))}
+              {episodes.length === 0 && !loading && (
+                <div className="text-center py-20">
+                    <p className="text-gray-700 font-black text-[10px] uppercase tracking-widest">No Episodes Found</p>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
+
       </main>
+
+      <style dangerouslySetInnerHTML={{ __html: `
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #3a86ff; }
+      `}} />
     </div>
   );
 }
