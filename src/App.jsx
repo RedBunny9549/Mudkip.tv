@@ -12,8 +12,8 @@ const colors = {
 
 const MUDKIP_LOGO = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/258.png";
 
-// STABLE API MIRROR
-const STABLE_API = "https://consumet-api-production-e812.up.railway.app/meta/anilist";
+// Updated to the most reliable public Consumet proxy
+const STABLE_API = "https://api.consumet.org/meta/anilist";
 
 function App() {
   const [query, setQuery] = useState('');
@@ -44,30 +44,44 @@ function App() {
         .eq('user_id', userId)
         .order('updated_at', { ascending: false })
         .limit(1)
-        .maybeSingle(); // maybeSingle prevents 406 errors if empty
+        .maybeSingle();
       if (data) setLastWatched(data);
-    } catch (e) { console.error("History fetch error:", e); }
+    } catch (e) { console.error(e); }
   };
 
   const handleSearch = async (e) => {
     e.preventDefault();
     if (!query) return;
     setLoading(true);
+    setResults([]); // Clear results while loading
+
     try {
+      // Fix: Some API mirrors require the search keyword in the path
       const { data } = await axios.get(`${STABLE_API}/${query}`);
-      const filtered = data.results.filter(item => 
+      
+      // If the first one fails, try the alternative search path
+      const items = data.results || data.data || [];
+      
+      const filtered = items.filter(item => 
         mode === 'anime' ? (item.type === 'ANIME' || item.type === 'TV') : item.type === 'MANGA'
       );
-      setResults(filtered || data.results);
+      setResults(filtered);
     } catch (err) { 
-      console.error("API Error:", err); 
+      console.error("API Error:", err);
+      // Fallback search if path fails
+      try {
+         const fallback = await axios.get(`${STABLE_API}?query=${query}`);
+         setResults(fallback.data.results || []);
+      } catch (e) {
+         alert("Ocean is too deep! API is struggling. Try again in a second.");
+      }
     } finally { 
       setLoading(false); 
     }
   };
 
   return (
-    <div className="min-h-screen text-white font-sans pb-20 selection:bg-blue-600" style={{ backgroundColor: colors.bgDeep }}>
+    <div className="min-h-screen text-white font-sans pb-20" style={{ backgroundColor: colors.bgDeep }}>
       
       <nav className="p-4 border-b border-white/5 flex justify-between items-center sticky top-0 z-[100] bg-[#060d17]/80 backdrop-blur-xl">
         <div className="flex items-center gap-8">
@@ -99,13 +113,11 @@ function App() {
       <main className="max-w-[1500px] mx-auto px-10 mt-12">
         {showAuth && !session ? <div className="max-w-md mx-auto"><Auth /></div> : (
           <>
-            {/* CONTINUE WATCHING (Anikku Style) */}
             {lastWatched && results.length === 0 && (
               <Link to={`/watch/${lastWatched.media_id}`} className="mb-16 p-8 rounded-[3rem] border border-blue-600/20 bg-gradient-to-r from-blue-600/10 to-transparent flex items-center justify-between group hover:border-blue-600/50 transition-all block">
                 <div className="flex items-center gap-8">
                    <div className="relative">
                       <img src={lastWatched.image_url} className="w-20 h-28 object-cover rounded-2xl shadow-2xl" alt="poster" />
-                      <div className="absolute inset-0 bg-blue-600/20 rounded-2xl" />
                    </div>
                    <div>
                       <p className="text-blue-500 font-black text-xs uppercase tracking-[0.2em] mb-2 flex items-center gap-2">
@@ -115,7 +127,7 @@ function App() {
                       <p className="text-gray-500 font-bold mt-1 uppercase text-xs tracking-widest">Episode {lastWatched.episode_number}</p>
                    </div>
                 </div>
-                <div className="bg-white text-black w-14 h-14 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform shadow-xl">
+                <div className="bg-white text-black w-14 h-14 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
                   <Play fill="black" size={24} className="translate-x-0.5" />
                 </div>
               </Link>
