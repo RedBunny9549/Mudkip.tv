@@ -12,8 +12,8 @@ const colors = {
 
 const MUDKIP_LOGO = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/258.png";
 
-// Updated to the most reliable public Consumet proxy
-const STABLE_API = "https://api.consumet.org/meta/anilist";
+// NEW STABLE PROXY - api.consumet.org is dead, use this instead:
+const STABLE_API = "https://consumet-api-one.vercel.app/meta/anilist";
 
 function App() {
   const [query, setQuery] = useState('');
@@ -53,27 +53,20 @@ function App() {
     e.preventDefault();
     if (!query) return;
     setLoading(true);
-    setResults([]); // Clear results while loading
+    setResults([]);
 
     try {
-      // Fix: Some API mirrors require the search keyword in the path
+      // Trying the most common search path
       const { data } = await axios.get(`${STABLE_API}/${query}`);
-      
-      // If the first one fails, try the alternative search path
-      const items = data.results || data.data || [];
-      
-      const filtered = items.filter(item => 
-        mode === 'anime' ? (item.type === 'ANIME' || item.type === 'TV') : item.type === 'MANGA'
-      );
-      setResults(filtered);
+      setResults(data.results || []);
     } catch (err) { 
-      console.error("API Error:", err);
-      // Fallback search if path fails
+      console.error("Primary API failed, trying backup...");
       try {
-         const fallback = await axios.get(`${STABLE_API}?query=${query}`);
-         setResults(fallback.data.results || []);
+        // Backup: searching via query parameter
+        const backup = await axios.get(`${STABLE_API}?query=${query}`);
+        setResults(backup.data.results || []);
       } catch (e) {
-         alert("Ocean is too deep! API is struggling. Try again in a second.");
+        alert("Mudkip is having trouble reaching the ocean. Try a different search term!");
       }
     } finally { 
       setLoading(false); 
@@ -81,7 +74,7 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen text-white font-sans pb-20" style={{ backgroundColor: colors.bgDeep }}>
+    <div className="min-h-screen text-white font-sans pb-20 selection:bg-blue-600" style={{ backgroundColor: colors.bgDeep }}>
       
       <nav className="p-4 border-b border-white/5 flex justify-between items-center sticky top-0 z-[100] bg-[#060d17]/80 backdrop-blur-xl">
         <div className="flex items-center gap-8">
